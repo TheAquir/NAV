@@ -1,0 +1,59 @@
+OBJECT Table 54001 Inbound Service Bus Messages
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/01/18;
+    Time=16:28:02;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+  }
+  FIELDS
+  {
+    { 1   ;   ;Entry No.           ;Integer       ;Editable=No }
+    { 2   ;   ;Queue Code          ;Code20        ;TableRelation="Azure Service Bus Queue" }
+    { 3   ;   ;Date and Time       ;DateTime       }
+    { 4   ;   ;UserId              ;Code50         }
+    { 10  ;   ;Message             ;Text250        }
+    { 11  ;   ;Message Data        ;BLOB           }
+    { 12  ;   ;Message Size        ;Integer        }
+    { 13  ;   ;Message Uri         ;Text250        }
+    { 14  ;   ;Message Id          ;Text50         }
+    { 15  ;   ;Message Deleted     ;Boolean        }
+    { 20  ;   ;Processed           ;Boolean        }
+    { 21  ;   ;Processed At        ;DateTime       }
+    { 22  ;   ;Processed By        ;Code50         }
+  }
+  KEYS
+  {
+    {    ;Entry No.                               ;Clustered=Yes }
+    {    ;Queue Code,Processed                     }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+
+    PROCEDURE SaveMessage@1000000000();
+    VAR
+      FileManagement@1000000000 : Codeunit 419;
+      TempBlob@1000000001 : TEMPORARY Record 99008535;
+      Filename@1000000002 : TextConst 'ENU=Message_%1.json';
+    BEGIN
+      CALCFIELDS("Message Data");
+
+      IF NOT "Message Data".HASVALUE THEN
+        EXIT;
+
+      TempBlob.Blob := "Message Data";
+      FileManagement.BLOBExport(TempBlob,STRSUBSTNO(Filename,"Entry No."),TRUE);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+

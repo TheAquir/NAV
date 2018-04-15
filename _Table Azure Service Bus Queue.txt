@@ -1,0 +1,38 @@
+OBJECT Table 54000 Azure Service Bus Queue
+{
+  OBJECT-PROPERTIES
+  {
+    Date=17/01/18;
+    Time=11:21:10;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+  }
+  FIELDS
+  {
+    { 1   ;   ;Code                ;Code20         }
+    { 2   ;   ;Namespace           ;Text250        }
+    { 3   ;   ;URL                 ;Text250       ;ExtendedDatatype=URL }
+    { 10  ;   ;Key Name            ;Text100        }
+    { 11  ;   ;Key                 ;Text100       ;ExtendedDatatype=Masked }
+    { 20  ;   ;Token               ;Text250        }
+    { 21  ;   ;Token Expiry        ;DateTime       }
+    { 30  ;   ;Delete Messages     ;Boolean       ;InitValue=Yes }
+  }
+  KEYS
+  {
+    {    ;Code                                    ;Clustered=Yes }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
