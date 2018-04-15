@@ -1,0 +1,320 @@
+OBJECT Codeunit 54000 Azure Service Bus Queue
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/01/18;
+    Time=16:18:24;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+
+    PROCEDURE ReadQueue@1000000001(QueueCode@1000000000 : Code[20]);
+    VAR
+      RequestUri@1000000003 : Text;
+      WebRequest@1000000010 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebRequest";
+      WebResponse@1000000009 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebResponse";
+      StreamReader@1000000008 : DotNet "'mscorlib'.System.IO.StreamReader";
+      Response@1000000007 : Text;
+      RequestStream@1000000011 : DotNet "'mscorlib'.System.IO.Stream";
+      JSONBuffer@1000000002 : TEMPORARY Record 1236;
+      AzureServiceBusQueue@1000000001 : Record 54000;
+      InboundServiceBusMessages@1000000004 : Record 54001;
+      OutStream@1000000005 : OutStream;
+      MessageUri@1000000006 : Text;
+      EntryNo@1000000012 : Integer;
+      BrokerProperties@1000000013 : Text;
+      JSONBuffer2@1000000014 : Record 1236;
+      MessageId@1000000015 : Text;
+      LockToken@1000000016 : Text;
+    BEGIN
+      // https://docs.microsoft.com/en-us/rest/api/servicebus/peek-lock-message-non-destructive-read
+      // https://docs.microsoft.com/en-us/rest/api/servicebus/delete-message
+
+      IF NOT AzureServiceBusQueue.GET(QueueCode) THEN
+        EXIT;
+
+      WebRequest := WebRequest.HttpWebRequest;
+      RequestUri := AzureServiceBusQueue.URL + '/messages/head';
+      WebRequest := WebRequest.Create(RequestUri);
+      WebRequest.Method := 'POST';
+      WebRequest.ContentType('application/atom+xml;type=entry;charset=utf-8');
+      WebRequest.ContentLength := 0;
+      WebRequest.Headers.Add('Authorization',GenerateSasToken(QueueCode));
+
+      IF SendRequest(WebRequest,WebResponse) THEN BEGIN
+        StreamReader := StreamReader.StreamReader(WebResponse.GetResponseStream);
+
+        JSONBuffer.RESET;
+        JSONBuffer.DELETEALL;
+        Response := StreamReader.ReadToEnd;
+        JSONBuffer.ReadFromText(Response);
+        IF JSONBuffer.FINDSET THEN BEGIN
+          EntryNo := GetNextEntryNo(FALSE);
+          WITH InboundServiceBusMessages DO BEGIN
+            INIT;
+            "Entry No." := EntryNo;
+            "Queue Code" := QueueCode;
+            "Date and Time" := CURRENTDATETIME;
+            UserId := UserId;
+            Message := COPYSTR(Response,1,MAXSTRLEN(Message));
+            "Message Data".CREATEOUTSTREAM(OutStream,TEXTENCODING::UTF8);
+            "Message Size" := STRLEN(Response);
+            "Message Uri" := WebResponse.GetResponseHeader('Location');
+            OutStream.WRITE(Response,"Message Size");
+            INSERT;
+          END;
+        END;
+
+        IF AzureServiceBusQueue."Delete Messages" THEN BEGIN
+          BrokerProperties := WebResponse.GetResponseHeader('BrokerProperties');
+          JSONBuffer.RESET;
+          JSONBuffer.DELETEALL;
+          JSONBuffer.ReadFromText(BrokerProperties);
+          IF JSONBuffer.FINDSET THEN BEGIN
+            JSONBuffer.SETRANGE(Path,'LockToken');
+            JSONBuffer.SETRANGE("Token type",JSONBuffer."Token type"::String);
+            IF JSONBuffer.FINDFIRST THEN
+              LockToken := JSONBuffer.Value;
+            JSONBuffer.SETRANGE(Path,'MessageId');
+            JSONBuffer.SETRANGE("Token type",JSONBuffer."Token type"::String);
+            IF JSONBuffer.FINDFIRST THEN
+              MessageId := JSONBuffer.Value;
+            IF ( LockToken <> '' ) AND ( MessageId <> '' ) THEN
+              MessageUri := AzureServiceBusQueue.URL + '/messages/' + MessageId + '/' + LockToken;
+            IF DeleteMessage(QueueCode,MessageUri) THEN
+              IF InboundServiceBusMessages.GET(EntryNo) THEN BEGIN
+                InboundServiceBusMessages."Message Deleted" := TRUE;
+                InboundServiceBusMessages."Message Id" := MessageId;
+                InboundServiceBusMessages.MODIFY;
+              END;
+          END;
+        END;
+      END;
+    END;
+
+    PROCEDURE PostMessage@1000000000(OutboundMessage@1000000000 : Record 54002);
+    VAR
+      RequestUri@1000000008 : Text;
+      WebRequest@1000000007 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebRequest";
+      RequestBody@1000000010 : Text;
+      WebResponse@1000000006 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebResponse";
+      StreamReader@1000000005 : DotNet "'mscorlib'.System.IO.StreamReader";
+      Response@1000000004 : Text;
+      RequestStream@1000000003 : DotNet "'mscorlib'.System.IO.Stream";
+      JSONBuffer@1000000002 : TEMPORARY Record 1236;
+      AzureServiceBusQueue@1000000001 : Record 54000;
+      InStream@1000000009 : InStream;
+      Encoding@1000000011 : DotNet "'mscorlib'.System.Text.Encoding";
+    BEGIN
+      // https://docs.microsoft.com/en-us/rest/api/servicebus/send-message-batch
+
+      IF OutboundMessage.Processed THEN
+        EXIT;
+
+      IF NOT AzureServiceBusQueue.GET(OutboundMessage."Queue Code") THEN
+        EXIT;
+
+      OutboundMessage.CALCFIELDS("Message Data");
+      IF NOT OutboundMessage."Message Data".HASVALUE THEN
+        EXIT;
+
+      WebRequest := WebRequest.HttpWebRequest;
+      RequestUri := AzureServiceBusQueue.URL + '/messages';
+      WebRequest := WebRequest.Create(RequestUri);
+      WebRequest.Method := 'POST';
+      WebRequest.ContentType('application/vnd.microsoft.servicebus.yml');
+      WebRequest.Headers.Add('Authorization',GenerateSasToken(OutboundMessage."Queue Code"));
+
+      OutboundMessage."Message Data".CREATEINSTREAM(InStream);
+      InStream.READTEXT(RequestBody);
+      WebRequest.ContentLength(STRLEN(RequestBody));
+      RequestStream := WebRequest.GetRequestStream;
+      RequestStream.Write(Encoding.UTF8.GetBytes(RequestBody),0,Encoding.UTF8.GetBytes(RequestBody).Length);
+      RequestStream.Close;
+
+      CLEARLASTERROR;
+      OutboundMessage.Processed := SendRequest(WebRequest,WebResponse);
+      IF OutboundMessage.Processed THEN BEGIN
+        OutboundMessage."Processed At" := CURRENTDATETIME;
+        OutboundMessage."Processed By" := USERID;
+      END ELSE
+        OutboundMessage."Error Message" := COPYSTR(GETLASTERRORTEXT,1,MAXSTRLEN(OutboundMessage."Error Message"));
+      OutboundMessage.MODIFY;
+    END;
+
+    LOCAL PROCEDURE DeleteMessage@1000000006(QueueCode@1000000002 : Code[20];MessageUri@1000000000 : Text) : Boolean;
+    VAR
+      WebRequest@1000000001 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebRequest";
+      WebResponse@1000000003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebResponse";
+    BEGIN
+      IF MessageUri = '' THEN
+        EXIT(FALSE);
+
+      WebRequest := WebRequest.HttpWebRequest;
+      WebRequest := WebRequest.Create(MessageUri);
+      WebRequest.Method := 'DELETE';
+      WebRequest.Headers.Add('Authorization',GenerateSasToken(QueueCode));
+
+      EXIT(SendRequest(WebRequest,WebResponse));
+    END;
+
+    [TryFunction]
+    LOCAL PROCEDURE SendRequest@1000000005(VAR Request@1000000003 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebRequest";VAR Response@1000000002 : DotNet "'System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089'.System.Net.HttpWebResponse");
+    BEGIN
+      Response := Request.GetResponse;
+    END;
+
+    LOCAL PROCEDURE GenerateSasToken@1000000666(QueueCode@1000000000 : Code[20]) Token : Text;
+    VAR
+      AzureServiceBusQueue@1000000001 : Record 54000;
+      SinceEpoch@1000000002 : Decimal;
+      Epoch@1000000003 : DateTime;
+      Expiry@1000000004 : Text;
+      HttpUtility@1000000005 : DotNet "'System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a'.System.Web.HttpUtility";
+      StringToSign@1000000006 : Text;
+      HMACSHA256@1000000007 : DotNet "'mscorlib'.System.Security.Cryptography.HMACSHA256";
+      Convert@1000000008 : DotNet "'mscorlib'.System.Convert";
+      Encoding@1000000009 : DotNet "'mscorlib'.System.Text.Encoding";
+      Signature@1000000010 : Text;
+      String@1000000011 : DotNet "'mscorlib'.System.String";
+      CultureInfo@1000000012 : DotNet "'mscorlib'.System.Globalization.CultureInfo";
+      TokenText@1000000013 : Text;
+      NewLine@1000000015 : Char;
+    BEGIN
+      // https://docs.microsoft.com/en-us/azure/service-bus-messaging/service-bus-sas
+
+      IF NOT AzureServiceBusQueue.GET(QueueCode) THEN
+        EXIT;
+
+      AzureServiceBusQueue.TESTFIELD(URL);
+      AzureServiceBusQueue.TESTFIELD("Key Name");
+      AzureServiceBusQueue.TESTFIELD(Key);
+
+      IF AzureServiceBusQueue.Token <> '' THEN
+        IF AzureServiceBusQueue."Token Expiry" > CURRENTDATETIME THEN
+          EXIT(AzureServiceBusQueue.Token);
+
+      Epoch := CREATEDATETIME(DMY2DATE(1,1,1970),000000T);
+      SinceEpoch := ( CURRENTDATETIME - Epoch ) / 1000;
+      Expiry := Convert.ToString(ROUND((SinceEpoch + 3600),1,'<'));
+      NewLine := 10;
+      StringToSign := HttpUtility.UrlEncode(AzureServiceBusQueue.URL) + FORMAT(NewLine) + Expiry;
+      HMACSHA256 := HMACSHA256.HMACSHA256(Encoding.UTF8.GetBytes(AzureServiceBusQueue.Key));
+      Signature := Convert.ToBase64String(HMACSHA256.ComputeHash(Encoding.UTF8.GetBytes(StringToSign)));
+      Token := Convert.ToString(STRSUBSTNO('SharedAccessSignature sr=%1&sig=%2&se=%3&skn=%4',
+                                  HttpUtility.UrlEncode(AzureServiceBusQueue.URL),
+                                  HttpUtility.UrlEncode(Signature),
+                                  Expiry,
+                                  AzureServiceBusQueue."Key Name"),
+                               CultureInfo.InvariantCulture);
+
+      AzureServiceBusQueue.Token := Token;
+      AzureServiceBusQueue."Token Expiry" := CURRENTDATETIME + 3600000;
+      AzureServiceBusQueue.MODIFY;
+
+      EXIT(Token);
+    END;
+
+    LOCAL PROCEDURE GetNextEntryNo@1000000009(Outbound@1000000000 : Boolean) : Integer;
+    VAR
+      OutboundServiceBusMessages@1000000001 : Record 54002;
+      InboundServiceBusMessages@1000000002 : Record 54001;
+    BEGIN
+      IF Outbound THEN BEGIN
+        IF NOT OutboundServiceBusMessages.FINDLAST THEN
+          EXIT(1)
+        ELSE
+          EXIT(OutboundServiceBusMessages."Entry No." + 1)
+      END ELSE BEGIN
+        IF NOT InboundServiceBusMessages.FINDLAST THEN
+          EXIT(1)
+        ELSE
+          EXIT(InboundServiceBusMessages."Entry No." + 1)
+      END;
+    END;
+
+    LOCAL PROCEDURE "--OBSOLETE--"@1000000004();
+    BEGIN
+    END;
+
+    LOCAL PROCEDURE GenerateSasTokenPS@1000000002(QueueCode@1000000000 : Code[20]) Token : Text;
+    VAR
+      PowershellSetup@1000000002 : Record 54100;
+      AzureServiceBusQueue@1000000004 : Record 54000;
+      PSScript@1000000003 : Text;
+      ScriptPath@1000000006 : Text;
+      File@1000000007 : DotNet "'mscorlib'.System.IO.File";
+      FileManagement@1000000008 : Codeunit 419;
+      PowershellWrapper@1000000005 : Codeunit 54100;
+      PowershellObjectCollection@1000000001 : Codeunit 54101;
+    BEGIN
+      AzureServiceBusQueue.GET(QueueCode);
+      AzureServiceBusQueue.TESTFIELD(URL);
+      AzureServiceBusQueue.TESTFIELD("Key Name");
+      AzureServiceBusQueue.TESTFIELD(Key);
+
+      IF AzureServiceBusQueue.Token <> '' THEN
+        IF AzureServiceBusQueue."Token Expiry" > CURRENTDATETIME + 36000 THEN
+          EXIT(AzureServiceBusQueue.Token);
+
+      PowershellSetup.GET;
+      PowershellSetup.TESTFIELD(Servername);
+      PowershellSetup.TESTFIELD(Username);
+      PowershellSetup.TESTFIELD(Password);
+
+      WITH PowershellWrapper DO BEGIN
+        OpenRunspace(PowershellSetup.Servername,PowershellSetup.Username,PowershellSetup.Password);
+        LoadModule('C:\Program Files\Microsoft Dynamics NAV\' + FORMAT(PowershellSetup."NAV Version") + '\Service\NavAdminTool.ps1');
+        PSScript := GetTokenScript(AzureServiceBusQueue.URL,AzureServiceBusQueue."Key Name",AzureServiceBusQueue.Key);
+        AddScript(PSScript);
+        InvokeCommands(PowershellObjectCollection);
+
+        IF (PowershellObjectCollection.FINDFIRST) THEN
+          Token := PowershellObjectCollection.GetPropertyValueText('Value');
+
+        CloseRunspace();
+      END;
+
+      AzureServiceBusQueue.Token := Token;
+      AzureServiceBusQueue."Token Expiry" := CURRENTDATETIME + 3600000;
+      AzureServiceBusQueue.MODIFY;
+    END;
+
+    LOCAL PROCEDURE GetTokenScript@1000000003(resourceUri@1000000000 : Text;keyName@1000000001 : Text;key@1000000002 : Text) PSScript : Text;
+    VAR
+      StringBuilder@1000000004 : DotNet "'mscorlib'.System.Text.StringBuilder";
+    BEGIN
+      StringBuilder := StringBuilder.StringBuilder;
+      StringBuilder.AppendLine('$resourceUri = "' + resourceUri +  '"');
+      StringBuilder.AppendLine('$keyName = "' + keyName + '"');
+      StringBuilder.AppendLine('$key = "' + key + '"');
+      StringBuilder.AppendLine('$epoch = Get-Date -Date "1970-01-01 00:00:00Z"');
+      StringBuilder.AppendLine('$utcNow = Get-Date');
+      StringBuilder.AppendLine('$sinceEpoch = New-TimeSpan -Start $epoch -End $utcNow');
+      StringBuilder.AppendLine('$expiry = [System.Convert]::ToString([int32]$sinceEpoch.TotalSeconds + 3600)');
+      StringBuilder.AppendLine('$stringToSign = [System.Web.HttpUtility]::UrlEncode($resourceUri) + "`n" + $expiry');
+      StringBuilder.AppendLine('$hamcsha = New-Object System.Security.Cryptography.HMACSHA256');
+      StringBuilder.AppendLine('$hamcsha.Key = [Text.Encoding]::UTF8.GetBytes($key)');
+      StringBuilder.AppendLine('$signature = [System.Convert]::ToBase64String($hamcsha.ComputeHash([Text.Encoding]::UTF8.GetBytes($stringToSign)))');
+      StringBuilder.AppendLine('$token = [System.String]::Format([System.Globalization.CultureInfo]::InvariantCulture,"SharedAccessSignature sr={0}&sig={1}&se={2}&skn={3}",`');
+      StringBuilder.AppendLine('  [System.Web.HttpUtility]::UrlEncode($resourceUri),[System.Web.HttpUtility]::UrlEncode($signature),$expiry,$keyName);');
+      StringBuilder.AppendLine('$tokenObject = New-Object System.Object');
+      StringBuilder.AppendLine('$tokenObject | Add-Member -type NoteProperty -Name "Name" -Value "SASToken"');
+      StringBuilder.AppendLine('$tokenObject | Add-Member -type NoteProperty -Name "Value" -Value $token');
+      StringBuilder.AppendLine('$tokenObject');
+      EXIT(StringBuilder.ToString);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
