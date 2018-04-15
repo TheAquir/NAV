@@ -27,4 +27,21 @@ table 50101 "Inbound Service Bus Messages"
         key("Primary Key";"Entry No."){}
         key("Process Queue";"Queue Code",Processed){}
     }
+
+
+    procedure SaveMessage();
+    var
+        FileManagement : Codeunit "File Management";
+        TempBlob : Record TempBlob; //TODO Temporary???
+        FileName : TextConst ENU='Message_%1.json';
+    begin
+        CalcFields("Message Data");
+
+        if not "Message Data".HasValue then
+            exit;
+        
+        //TempBlob.Blob := "Message Data";
+        //FileManagement.DownloadHandler()
+        
+    end;
 }

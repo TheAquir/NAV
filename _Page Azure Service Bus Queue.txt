@@ -1,0 +1,56 @@
+OBJECT Page 54000 Azure Service Bus Queue
+{
+  OBJECT-PROPERTIES
+  {
+    Date=12/01/18;
+    Time=12:27:45;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table54000;
+    PageType=List;
+  }
+  CONTROLS
+  {
+    { 1000000000;0;Container;
+                ContainerType=ContentArea }
+
+    { 1000000001;1;Group  ;
+                Name=Group;
+                GroupType=Repeater }
+
+    { 1000000002;2;Field  ;
+                SourceExpr=Code }
+
+    { 1000000003;2;Field  ;
+                SourceExpr=Namespace }
+
+    { 1000000004;2;Field  ;
+                SourceExpr=URL }
+
+    { 1000000005;2;Field  ;
+                SourceExpr="Key Name" }
+
+    { 1000000006;2;Field  ;
+                SourceExpr=Key }
+
+    { 1000000007;2;Field  ;
+                SourceExpr=Token }
+
+    { 1000000008;2;Field  ;
+                SourceExpr="Token Expiry" }
+
+    { 1000000009;2;Field  ;
+                SourceExpr="Delete Messages" }
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+

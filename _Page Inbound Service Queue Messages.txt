@@ -1,0 +1,75 @@
+OBJECT Page 54001 Inbound Service Queue Messages
+{
+  OBJECT-PROPERTIES
+  {
+    Date=16/01/18;
+    Time=14:35:17;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+    Editable=No;
+    SourceTable=Table54001;
+    PageType=List;
+    ActionList=ACTIONS
+    {
+      { 1000000011;  ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 1000000012;1 ;Action    ;
+                      Name=Save Message;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=Save;
+                      PromotedCategory=Process;
+                      OnAction=BEGIN
+                                 SaveMessage;
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1000000000;0;Container;
+                ContainerType=ContentArea }
+
+    { 1000000001;1;Group  ;
+                Name=Group;
+                GroupType=Repeater }
+
+    { 1000000002;2;Field  ;
+                SourceExpr="Entry No." }
+
+    { 1000000003;2;Field  ;
+                SourceExpr="Queue Code" }
+
+    { 1000000004;2;Field  ;
+                SourceExpr="Date and Time" }
+
+    { 1000000005;2;Field  ;
+                SourceExpr=UserId }
+
+    { 1000000006;2;Field  ;
+                SourceExpr=Message }
+
+    { 1000000007;2;Field  ;
+                SourceExpr="Message Size" }
+
+    { 1000000008;2;Field  ;
+                SourceExpr=Processed }
+
+    { 1000000009;2;Field  ;
+                SourceExpr="Processed At" }
+
+    { 1000000010;2;Field  ;
+                SourceExpr="Processed By" }
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+

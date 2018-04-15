@@ -1,0 +1,30 @@
+OBJECT Codeunit 54001 Read Azure Service Bus Queue
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/01/18;
+    Time=16:24:24;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+    TableNo=472;
+    OnRun=VAR
+            AzureServiceBusQueue@1000000000 : Codeunit 54000;
+          BEGIN
+            IF "Parameter String" = '' THEN
+              EXIT;
+
+            AzureServiceBusQueue.ReadQueue("Parameter String");
+          END;
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+

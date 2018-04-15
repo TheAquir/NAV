@@ -1,0 +1,74 @@
+OBJECT Codeunit 54099 Azure Service Bus Testing
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/01/18;
+    Time=16:23:22;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+            Test;
+          END;
+
+  }
+  CODE
+  {
+
+    LOCAL PROCEDURE Test@1000000001();
+    VAR
+      AzureServiceBusQueue@1000000000 : Record 54000;
+      OutboundServiceBusMessages@1000000001 : Record 54002;
+      NewOutboundServiceBusMessage@1000000003 : Record 54002;
+      InboundServiceBusMessages@1000000002 : Record 54001;
+      OutStream@1000000004 : OutStream;
+      AzureServiceBusQueueMgmnt@1000000005 : Codeunit 54000;
+      OutboundEntryNo@1000000006 : Integer;
+      LastInboundEntryNo@1000000007 : Integer;
+      ProgressDialog@1000000008 : Dialog;
+    BEGIN
+      ProgressDialog.OPEN('Running test...');
+
+      AzureServiceBusQueue.GET('TEST');
+
+      NewOutboundServiceBusMessage.INIT;
+      IF OutboundServiceBusMessages.FINDLAST THEN
+        OutboundEntryNo := OutboundServiceBusMessages."Entry No." + 1
+      ELSE
+        OutboundEntryNo := 1;
+      NewOutboundServiceBusMessage."Entry No." := OutboundEntryNo;
+      NewOutboundServiceBusMessage."Queue Code" := 'TEST';
+      NewOutboundServiceBusMessage."Date and Time" := CURRENTDATETIME;
+      NewOutboundServiceBusMessage.UserId := USERID;
+      NewOutboundServiceBusMessage.Message := 'Hello Service Bus';
+      NewOutboundServiceBusMessage."Message Data".CREATEOUTSTREAM(OutStream);
+      OutStream.WRITETEXT('{"Body":"Hello Service Bus"}');
+      NewOutboundServiceBusMessage."Message Size" := STRLEN('{"Body":"Hello Service Bus"}');
+      NewOutboundServiceBusMessage.INSERT;
+
+      AzureServiceBusQueueMgmnt.PostMessage(NewOutboundServiceBusMessage);
+
+      OutboundServiceBusMessages.GET(OutboundEntryNo);
+
+      IF NOT OutboundServiceBusMessages.Processed THEN
+        ERROR('Error "%1"',OutboundServiceBusMessages."Error Message");
+
+      IF InboundServiceBusMessages.FINDLAST THEN
+        LastInboundEntryNo := InboundServiceBusMessages."Entry No.";
+
+      SLEEP(2000);
+
+      AzureServiceBusQueueMgmnt.ReadQueue('TEST');
+
+      IF InboundServiceBusMessages.FINDLAST THEN
+        IF InboundServiceBusMessages."Entry No." > LastInboundEntryNo THEN
+          MESSAGE('Success "%1"',InboundServiceBusMessages.Message);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+

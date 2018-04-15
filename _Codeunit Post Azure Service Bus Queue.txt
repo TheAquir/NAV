@@ -1,0 +1,38 @@
+OBJECT Codeunit 54002 Post Azure Service Bus Queue
+{
+  OBJECT-PROPERTIES
+  {
+    Date=22/01/18;
+    Time=16:27:34;
+    Modified=Yes;
+    Version List=Azure Service Bus;
+  }
+  PROPERTIES
+  {
+    TableNo=472;
+    OnRun=VAR
+            AzureServiceBusQueue@1000000000 : Codeunit 54000;
+            OutboundServiceBusMessages@1000000001 : Record 54002;
+          BEGIN
+            IF "Parameter String" = '' THEN
+              EXIT;
+
+            OutboundServiceBusMessages.RESET;
+            OutboundServiceBusMessages.SETFILTER("Queue Code","Parameter String");
+            OutboundServiceBusMessages.SETRANGE(Processed,FALSE);
+            IF NOT OutboundServiceBusMessages.FINDSET THEN
+              EXIT
+            ELSE REPEAT
+              AzureServiceBusQueue.PostMessage(OutboundServiceBusMessages);
+            UNTIL OutboundServiceBusMessages.NEXT = 0;
+          END;
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
